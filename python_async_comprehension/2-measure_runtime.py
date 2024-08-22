@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-
-# Task 2
+# Measure runtime
 
 import asyncio
-from typing import List
 
 
 async_comprehension = __import__('1-async_comprehension').async_comprehension
