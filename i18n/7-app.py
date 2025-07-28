@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-""" Basic Babel setup """
+""" Basic Babel setup with locale and timezone selection """
 from flask import Flask, render_template, request, g
 from flask_babel import Babel, _
 from typing import Union
 import pytz
+from pytz.exceptions import UnknownTimeZoneError
 
 
 users = {
     1: {"name": "Balou", "locale": "fr", "timezone": "Europe/Paris"},
     2: {"name": "Beyonce", "locale": "en", "timezone": "US/Central"},
-    3: {"name": "Spock", "locale": "kg", "timezone": "Vulcan"},
+    3: {"name": "Spock", "locale": "kg", "timezone": "Vulcan"},  # invalid
     4: {"name": "Teletubby", "locale": None, "timezone": "Europe/London"},
 }
 
@@ -23,89 +24,61 @@ class Config(object):
 
 app = Flask(__name__, template_folder='templates')
 app.config.from_object(Config)
-babel = Babel(app)
-
-
-@app.before_request
-def before_request(login_as: int = None):
-    """ Request of each function
-    """
-    user: dict = get_user()
-    g.user = user
+babel = Babel()
 
 
 def get_user() -> Union[dict, None]:
-    """ Get the user of the dict
-
-        Return User
-    """
-    login_user = request.args.get('login_as', None)
-
-    if login_user is None:
+    """Retrieve user dict from login_as parameter."""
+    try:
+        user_id = int(request.args.get("login_as"))
+        return users.get(user_id)
+    except (TypeError, ValueError):
         return None
 
-    user: dict = {}
-    user[login_user] = users.get(int(login_user))
 
-    return user[login_user]
+@app.before_request
+def before_request():
+    """Attach user to global Flask context before request."""
+    g.user = get_user()
 
 
-@babel.localeselector
 def get_locale():
-    """ Locale language
-
-        Return:
-            Best match to the language
-    """
-    locale = request.args.get('locale', None)
-
-    if locale and locale in app.config['LANGUAGES']:
+    """Select best locale according to URL, user or request header."""
+    locale = request.args.get("locale")
+    if locale in app.config["LANGUAGES"]:
         return locale
 
-    locale = request.headers.get('locale', None)
-    if locale and locale in app.config['LANGUAGES']:
-        return locale
+    if g.user:
+        user_locale = g.user.get("locale")
+        if user_locale in app.config["LANGUAGES"]:
+            return user_locale
 
-    return request.accept_languages.best_match(app.config['LANGUAGES'])
+    return request.accept_languages.best_match(app.config["LANGUAGES"])
 
 
-@babel.timezoneselector
 def get_timezone() -> str:
-    """ Locale language
-
-        1.Find timezone parameter in URL parameters
-        2.Find time zone from user settings
-        3.Default to UTC
-
-        Return:
-            Timezone or Default UTC
-    """
+    """Select best timezone from URL, user or fallback to UTC."""
     try:
-        if request.args.get("timezone"):
-            timezone = request.args.get("timezone")
-            tzone = pytz.timezone(timezone)
-        elif g.user and g.user.get("timezone"):
-            timezone = g.user.get("timezone")
-            tzone = pytz.timezone(timezone)
-        else:
-            timezone = app.config["BABEL_DEFAULT_TIMEZONE"]
-            tzone = pytz.timezone(timezone)
+        tz_param = request.args.get("timezone")
+        if tz_param:
+            return pytz.timezone(tz_param).zone
 
-    except exceptions.UnknownTimeZoneError:
-        timezone = 'UTC'
+        if g.user and g.user.get("timezone"):
+            return pytz.timezone(g.user["timezone"]).zone
+    except UnknownTimeZoneError:
+        pass
 
-    return timezone
+    return app.config["BABEL_DEFAULT_TIMEZONE"]
+
+
+# Init Babel with both locale and timezone selector
+babel.init_app(app, locale_selector=get_locale, timezone_selector=get_timezone)
 
 
 @app.route('/', methods=['GET'], strict_slashes=False)
-def hello_world():
-    """ Greeting
-
-        Return:
-            Initial template html
-    """
-    return render_template('6-index.html')
+def index():
+    return render_template('7-index.html')
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port="5000")
+    app.run(host="0.0.0.0", port=5000)

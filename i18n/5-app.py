@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-""" Basic Babel setup """
+""" Basic Babel setup with mock login support """
 from flask import Flask, render_template, request, g
-from flask_babel import Babel, _
+from flask_babel import Babel
 from typing import Union
 
 
@@ -22,58 +22,41 @@ class Config(object):
 
 app = Flask(__name__, template_folder='templates')
 app.config.from_object(Config)
-babel = Babel(app)
-
-
-@app.before_request
-def before_request(login_as: int = None):
-    """ Request of each function
-    """
-    user: dict = get_user()
-    print(user)
-    g.user = user
+babel = Babel()
 
 
 def get_user() -> Union[dict, None]:
-    """ Get the user of the dict
-
-        Return User
-    """
-    login_user = request.args.get('login_as', None)
-
-    if login_user is None:
+    """Get user dictionary based on login_as param."""
+    try:
+        user_id = int(request.args.get('login_as'))
+        return users.get(user_id)
+    except (TypeError, ValueError):
         return None
 
-    user: dict = {}
-    user[login_user] = users.get(int(login_user))
 
-    return user[login_user]
+@app.before_request
+def before_request():
+    """Set user on flask global before each request."""
+    g.user = get_user()
 
 
-@babel.localeselector
 def get_locale():
-    """ Locale language
-
-        Return:
-            Best match to the language
-    """
-    locale = request.args.get('locale', None)
-
-    if locale and locale in app.config['LANGUAGES']:
+    """Determine the best match with our supported languages."""
+    locale = request.args.get('locale')
+    if locale in app.config['LANGUAGES']:
         return locale
-
     return request.accept_languages.best_match(app.config['LANGUAGES'])
 
 
-@app.route('/', methods=['GET'], strict_slashes=False)
-def hello_world():
-    """ Greeting
+# Initialize Babel with our custom locale selector
+babel.init_app(app, locale_selector=get_locale)
 
-        Return:
-            Initial template html
-    """
+
+@app.route('/', strict_slashes=False)
+def index():
+    """Render the homepage."""
     return render_template('5-index.html')
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port="5000")
+    app.run(host="0.0.0.0", port=5000)
